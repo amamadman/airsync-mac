@@ -1,15 +1,26 @@
-name: Build AirSync Self Compiled
+name: Weekly Sync and Build
 
 on:
+  schedule:
+    - cron: '0 2 * * 1'
   workflow_dispatch:
 
 jobs:
-  build:
+  sync-and-build:
     runs-on: macos-latest
 
     steps:
-    - name: Checkout repository
+    - name: Checkout fork
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Sync with upstream
+      run: |
+        git remote add upstream https://github.com/sameerasw/airsync-mac.git || true
+        git fetch upstream main
+        git merge upstream/main --no-edit
+        git push origin main
 
     - name: Select Xcode 26
       uses: maxim-lobanov/setup-xcode@v1
@@ -25,16 +36,34 @@ jobs:
           CODE_SIGN_STYLE=Manual \
           DEVELOPMENT_TEAM=""
 
-    - name: Package and upload
+    - name: Package
+      id: package
       run: |
         APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "AirSync.app" -path "*/Build/Products/*" | head -1)
         echo "Found: $APP_PATH"
+        VERSION=$(defaults read "$APP_PATH/Contents/Info.plist" CFBundleShortVersionString)
+        BUILD=$(defaults read "$APP_PATH/Contents/Info.plist" CFBundleVersion)
+        TAG="v${VERSION}-build${BUILD}"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+        echo "tag=$TAG" >> "$GITHUB_OUTPUT"
         cd "$(dirname "$APP_PATH")"
         ditto -c -k --keepParent "$(basename "$APP_PATH")" /tmp/AirSync.zip
         echo "Zipped: $(ls -lh /tmp/AirSync.zip)"
 
-    - name: Upload AirSync.zip
-      uses: actions/upload-artifact@v4
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
       with:
-        name: AirSync
-        path: /tmp/AirSync.zip
+        tag_name: ${{ steps.package.outputs.tag }}
+        name: "AirSync Self Compiled ${{ steps.package.outputs.version }} (build ${{ steps.package.outputs.build }})"
+        body: |
+          Self-compiled build of [AirSync](https://github.com/sameerasw/airsync-mac) with all features unlocked.
+
+          **How to install:**
+          1. Download `AirSync.zip` below
+          2. Unzip it
+          3. Drag `AirSync.app` to `/Applications`
+          4. Right-click → Open on first launch (bypasses Gatekeeper)
+
+          Built from upstream `main` at ${{ github.sha }}.
+        files: /tmp/AirSync.zip

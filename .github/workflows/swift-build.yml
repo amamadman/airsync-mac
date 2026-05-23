@@ -57,18 +57,25 @@ jobs:
         echo "build=$BUILD" >> "$GITHUB_OUTPUT"
         echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-        APP_DIR="$(dirname "$APP_PATH")"
-        cd "$APP_DIR"
-        ditto -c -k --keepParent "$(basename "$APP_PATH")" "$GITHUB_WORKSPACE/AirSync.app.zip"
-        cd "$GITHUB_WORKSPACE"
-        ZIP_SIZE=$(stat -f%z AirSync.app.zip)
+        DMG_NAME="AirSync.dmg"
+        DMG_STAGING="/tmp/dmg-staging"
+        rm -rf "$DMG_STAGING"
+        mkdir -p "$DMG_STAGING"
+        cp -R "$APP_PATH" "$DMG_STAGING/"
+        ln -s /Applications "$DMG_STAGING/Applications"
+        hdiutil create -volname "AirSync" \
+          -srcfolder "$DMG_STAGING" \
+          -ov -format UDZO \
+          "$GITHUB_WORKSPACE/$DMG_NAME"
+
+        DMG_SIZE=$(stat -f%z "$GITHUB_WORKSPACE/$DMG_NAME")
 
         SIGNATURE=$(node -e "
           const nacl = require('/tmp/node_modules/tweetnacl');
           const fs = require('fs');
           const b64 = s => Buffer.from(s, 'base64');
           const sec = b64(process.env.SPARKLE_PRIVATE_KEY);
-          const data = fs.readFileSync('AirSync.app.zip');
+          const data = fs.readFileSync('$GITHUB_WORKSPACE/$DMG_NAME');
           const sig = nacl.sign.detached(data, sec);
           process.stdout.write(Buffer.from(sig).toString('base64'));
         ")
@@ -84,9 +91,9 @@ jobs:
               <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
               <sparkle:minimumSystemVersion>14.5</sparkle:minimumSystemVersion>
               <enclosure
-                url="https://github.com/amamadman/airsync-mac/releases/download/${TAG}/AirSync.app.zip"
+                url="https://github.com/amamadman/airsync-mac/releases/download/${TAG}/${DMG_NAME}"
                 sparkle:edSignature="${SIGNATURE}"
-                length="${ZIP_SIZE}"
+                length="${DMG_SIZE}"
                 type="application/octet-stream"
               />
             </item>
@@ -94,15 +101,12 @@ jobs:
         </rss>
         APPCAST
 
-        echo "Appcast generated:"
-        cat /tmp/appcast.xml
-
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.package.outputs.tag }}
         name: "AirSync ${{ steps.package.outputs.version }}"
-        files: AirSync.app.zip
+        files: AirSync.dmg
 
     - name: Publish appcast to GitHub Pages
       run: |

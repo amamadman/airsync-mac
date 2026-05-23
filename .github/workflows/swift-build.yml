@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  pages: write
 
 jobs:
   sync-and-build:
@@ -17,6 +18,10 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+
+    - name: Install signing tools
+      run: |
+        cd /tmp && npm init -y && npm install tweetnacl
 
     - name: Sync with upstream
       run: |
@@ -39,8 +44,10 @@ jobs:
           CODE_SIGN_STYLE=Manual \
           DEVELOPMENT_TEAM=""
 
-    - name: Package
+    - name: Package and sign
       id: package
+      env:
+        SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
       run: |
         APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "AirSync.app" -path "*/Build/Products/*" | head -1)
         VERSION=$(defaults read "$APP_PATH/Contents/Info.plist" CFBundleShortVersionString)
@@ -49,8 +56,46 @@ jobs:
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
         echo "build=$BUILD" >> "$GITHUB_OUTPUT"
         echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-        cd "$(dirname "$APP_PATH")"
-        ditto -c -k --keepParent "$(basename "$APP_PATH")" AirSync.app.zip
+
+        APP_DIR="$(dirname "$APP_PATH")"
+        cd "$APP_DIR"
+        ditto -c -k --keepParent "$(basename "$APP_PATH")" "$GITHUB_WORKSPACE/AirSync.app.zip"
+        cd "$GITHUB_WORKSPACE"
+        ZIP_SIZE=$(stat -f%z AirSync.app.zip)
+
+        SIGNATURE=$(node -e "
+          const nacl = require('/tmp/node_modules/tweetnacl');
+          const fs = require('fs');
+          const b64 = s => Buffer.from(s, 'base64');
+          const sec = b64(process.env.SPARKLE_PRIVATE_KEY);
+          const data = fs.readFileSync('AirSync.app.zip');
+          const sig = nacl.sign.detached(data, sec);
+          process.stdout.write(Buffer.from(sig).toString('base64'));
+        ")
+
+        cat > /tmp/appcast.xml << APPCAST
+        <?xml version="1.0" encoding="utf-8"?>
+        <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+          <channel>
+            <title>AirSync Self Compiled</title>
+            <item>
+              <title>AirSync ${VERSION}</title>
+              <sparkle:version>${BUILD}</sparkle:version>
+              <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+              <sparkle:minimumSystemVersion>14.5</sparkle:minimumSystemVersion>
+              <enclosure
+                url="https://github.com/amamadman/airsync-mac/releases/download/${TAG}/AirSync.app.zip"
+                sparkle:edSignature="${SIGNATURE}"
+                length="${ZIP_SIZE}"
+                type="application/octet-stream"
+              />
+            </item>
+          </channel>
+        </rss>
+        APPCAST
+
+        echo "Appcast generated:"
+        cat /tmp/appcast.xml
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
@@ -58,3 +103,14 @@ jobs:
         tag_name: ${{ steps.package.outputs.tag }}
         name: "AirSync ${{ steps.package.outputs.version }}"
         files: AirSync.app.zip
+
+    - name: Publish appcast to GitHub Pages
+      run: |
+        git fetch origin gh-pages || true
+        git checkout gh-pages 2>/dev/null || git checkout --orphan gh-pages
+        git rm -rf . 2>/dev/null || true
+        cp /tmp/appcast.xml appcast.xml
+        git add appcast.xml
+        git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" \
+          commit -m "Update appcast for ${{ steps.package.outputs.tag }}" || true
+        git push origin gh-pages --force

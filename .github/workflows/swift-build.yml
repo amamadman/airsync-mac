@@ -43,7 +43,6 @@ jobs:
       id: package
       run: |
         APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "AirSync.app" -path "*/Build/Products/*" | head -1)
-        echo "Found: $APP_PATH"
         VERSION=$(defaults read "$APP_PATH/Contents/Info.plist" CFBundleShortVersionString)
         BUILD=$(defaults read "$APP_PATH/Contents/Info.plist" CFBundleVersion)
         TAG="v${VERSION}-build${BUILD}"
@@ -51,22 +50,11 @@ jobs:
         echo "build=$BUILD" >> "$GITHUB_OUTPUT"
         echo "tag=$TAG" >> "$GITHUB_OUTPUT"
         cd "$(dirname "$APP_PATH")"
-        ditto -c -k --keepParent "$(basename "$APP_PATH")" /tmp/AirSync.zip
-        echo "Zipped: $(ls -lh /tmp/AirSync.zip)"
+        ditto -c -k --keepParent "$(basename "$APP_PATH")" AirSync.app.zip
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.package.outputs.tag }}
-        name: "AirSync Self Compiled ${{ steps.package.outputs.version }} (build ${{ steps.package.outputs.build }})"
-        body: |
-          Self-compiled build of [AirSync](https://github.com/sameerasw/airsync-mac) with all features unlocked.
-
-          **How to install:**
-          1. Download `AirSync.zip` below
-          2. Unzip it
-          3. Drag `AirSync.app` to `/Applications`
-          4. Right-click → Open on first launch (bypasses Gatekeeper)
-
-          Built from upstream `main` at ${{ github.sha }}.
-        files: /tmp/AirSync.zip
+        name: "AirSync ${{ steps.package.outputs.version }}"
+        files: AirSync.app.zip

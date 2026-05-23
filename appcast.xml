@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>AirSync Self Compiled</title>
+    <item>
+      <title>AirSync 3.2.0</title>
+      <sparkle:version>28</sparkle:version>
+      <sparkle:shortVersionString>3.2.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.5</sparkle:minimumSystemVersion>
+      <enclosure
+        url="https://github.com/amamadman/airsync-mac/releases/download/v3.2.0-build28/AirSync.app.zip"
+        sparkle:edSignature="EmuXbDbx3PT9r533YnAZjS2NvOvuUqEgJaR0cnHzfRyI/tQkX3sDUqFds3sLfPlS6TdhkrPqJzJ6njZ3uOMrBg=="
+        length="27299659"
+        type="application/octet-stream"
+      />
+    </item>
+  </channel>
+</rss>

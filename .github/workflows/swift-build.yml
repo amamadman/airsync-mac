@@ -25,15 +25,16 @@ jobs:
           CODE_SIGN_STYLE=Manual \
           DEVELOPMENT_TEAM=""
 
-    - name: Locate app
-      id: locate
+    - name: Package and upload
       run: |
         APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "AirSync.app" -path "*/Build/Products/*" | head -1)
-        echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
         echo "Found: $APP_PATH"
+        cd "$(dirname "$APP_PATH")"
+        ditto -c -k --keepParent "$(basename "$APP_PATH")" /tmp/AirSync.zip
+        echo "Zipped: $(ls -lh /tmp/AirSync.zip)"
 
-    - name: Upload AirSync.app
+    - name: Upload AirSync.zip
       uses: actions/upload-artifact@v4
       with:
         name: AirSync
-        path: ${{ steps.locate.outputs.app_path }}
+        path: /tmp/AirSync.zip
